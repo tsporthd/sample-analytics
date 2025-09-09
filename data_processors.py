@@ -12,6 +12,7 @@ from data_models import (
     AppCodeCounter, RiskCalculator, DataReader, DataWriter, 
     ChartGenerator, ReportGenerator
 )
+from app_filter import AppCodeFilter
 
 
 class CSVDataReader(DataReader):
@@ -188,11 +189,13 @@ class DataAnalysisService:
                  data_reader: DataReader,
                  data_writer: DataWriter,
                  chart_generator: ChartGenerator,
-                 report_generator: ReportGenerator):
+                 report_generator: ReportGenerator,
+                 app_filter: AppCodeFilter = None):
         self.data_reader = data_reader
         self.data_writer = data_writer
         self.chart_generator = chart_generator
         self.report_generator = report_generator
+        self.app_filter = app_filter
     
     def analyze_data(self, source: str) -> tuple[List[InfrastructureRecord], Dict[str, int]]:
         """Main data analysis pipeline."""
@@ -209,8 +212,27 @@ class DataAnalysisService:
             if record.app_code not in unique_records:
                 unique_records[record.app_code] = record
         
-        # Count AppCodes
+        # Apply AppCode filter if configured
+        if self.app_filter:
+            filtered_records = {}
+            for app_code, record in unique_records.items():
+                if self.app_filter.is_allowed(app_code):
+                    filtered_records[app_code] = record
+            
+            unique_records = filtered_records
+            print(f"Filtered to {len(unique_records)} AppCodes based on Apps.csv")
+        
+        # Count AppCodes (from all records, not just unique)
         appcode_counts = AppCodeCounter.count_appcodes(records)
+        
+        # Filter counts to match filtered records
+        if self.app_filter:
+            filtered_counts = {}
+            for app_code, count in appcode_counts.items():
+                if self.app_filter.is_allowed(app_code):
+                    filtered_counts[app_code] = count
+            appcode_counts = filtered_counts
+        
         unique_record_list = list(unique_records.values())
         
         print(f"Found {len(unique_record_list)} unique AppCodes")

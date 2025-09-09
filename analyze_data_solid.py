@@ -15,6 +15,7 @@ from data_processors import (
     CSVDataReader, CSVDataWriter, RiskChartGenerator, 
     ConsoleReportGenerator, DataAnalysisService
 )
+from app_filter import CSVAppCodeFilter
 
 
 def create_analysis_service() -> DataAnalysisService:
@@ -25,11 +26,16 @@ def create_analysis_service() -> DataAnalysisService:
     chart_generator = RiskChartGenerator()
     report_generator = ConsoleReportGenerator()
     
+    # Create and configure AppCode filter
+    app_filter = CSVAppCodeFilter()
+    app_filter.load_allowed_appcodes('Apps.csv')
+    
     return DataAnalysisService(
         data_reader=data_reader,
         data_writer=data_writer,
         chart_generator=chart_generator,
-        report_generator=report_generator
+        report_generator=report_generator,
+        app_filter=app_filter
     )
 
 
