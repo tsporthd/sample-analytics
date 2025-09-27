@@ -105,6 +105,49 @@ class TestDataModels(unittest.TestCase):
         self.assertAlmostEqual(records[0].composite_risk_score_percent, expected_pct_1, places=5)
         self.assertAlmostEqual(records[1].composite_risk_score_percent, expected_pct_2, places=5)
 
+    def test_risk_calculator_grouped_percentages(self):
+        """Test RiskCalculator calculates percentages within groups."""
+        records = [
+            InfrastructureRecord("App1", "A1", "High", "Server"),
+            InfrastructureRecord("App2", "A2", "High", "Server"),
+            InfrastructureRecord("App3", "A3", "Low", "DB"),
+            InfrastructureRecord("App4", "A4", "Low", "DB"),
+        ]
+
+        # Set up test data - two High (3.0) and two Low (1.0)
+        records[0].composite_score_number = 3.0
+        records[0].total_infrastructure = 10
+        records[1].composite_score_number = 3.0
+        records[1].total_infrastructure = 20
+        records[2].composite_score_number = 1.0
+        records[2].total_infrastructure = 30
+        records[3].composite_score_number = 1.0
+        records[3].total_infrastructure = 40
+
+        # Calculate risk scores
+        RiskCalculator.calculate_risk_scores(records)
+
+        # Risk scores: 30.0, 60.0, 30.0, 40.0
+        self.assertEqual(records[0].composite_risk_score, 30.0)
+        self.assertEqual(records[1].composite_risk_score, 60.0)
+        self.assertEqual(records[2].composite_risk_score, 30.0)
+        self.assertEqual(records[3].composite_risk_score, 40.0)
+
+        # Calculate grouped percentages
+        RiskCalculator.calculate_risk_percentages_by_group(records)
+
+        # High group total: 30.0 + 60.0 = 90.0
+        # Low group total: 30.0 + 40.0 = 70.0
+        high_group_pct_1 = (30.0 / 90.0) * 100  # 33.33%
+        high_group_pct_2 = (60.0 / 90.0) * 100  # 66.67%
+        low_group_pct_1 = (30.0 / 70.0) * 100   # 42.86%
+        low_group_pct_2 = (40.0 / 70.0) * 100   # 57.14%
+
+        self.assertAlmostEqual(records[0].composite_risk_score_percent, high_group_pct_1, places=2)
+        self.assertAlmostEqual(records[1].composite_risk_score_percent, high_group_pct_2, places=2)
+        self.assertAlmostEqual(records[2].composite_risk_score_percent, low_group_pct_1, places=2)
+        self.assertAlmostEqual(records[3].composite_risk_score_percent, low_group_pct_2, places=2)
+
 
 class TestDataProcessors(unittest.TestCase):
     """Test concrete implementations of interfaces."""
@@ -154,7 +197,7 @@ class TestDataProcessors(unittest.TestCase):
         # Test it implements the interface
         self.assertIsInstance(writer, DataWriter)
         
-        # Test functionality
+        # Test functionality without exclude_appcode
         records = [
             InfrastructureRecord("Test", "T1", "High", "Server")
         ]
@@ -166,11 +209,51 @@ class TestDataProcessors(unittest.TestCase):
             writer.write_data(records, output_file.name)
             self.assertTrue(os.path.exists(output_file.name))
             
-            # Verify content
+            # Verify content includes AppCode
             with open(output_file.name, 'r') as f:
                 content = f.read()
                 self.assertIn('Test', content)
                 self.assertIn('T1', content)
+                self.assertIn('AppCode', content)  # Should include AppCode column
+        finally:
+            if os.path.exists(output_file.name):
+                os.unlink(output_file.name)
+    
+    def test_csv_data_writer_exclude_appcode(self):
+        """Test CSVDataWriter with exclude_appcode option."""
+        writer = CSVDataWriter()
+        
+        records = [
+            InfrastructureRecord("Test App", "T1", "High", "Server")
+        ]
+        
+        output_file = tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False)
+        output_file.close()
+        
+        try:
+            # Write with exclude_appcode=True
+            writer.write_data(records, output_file.name, exclude_appcode=True)
+            self.assertTrue(os.path.exists(output_file.name))
+            
+            # Verify AppCode column is excluded
+            with open(output_file.name, 'r') as f:
+                reader = csv.DictReader(f)
+                headers = reader.fieldnames
+                
+                # Should not contain AppCode
+                self.assertNotIn('AppCode', headers)
+                
+                # Should contain other columns
+                self.assertIn('ApplicationService', headers)
+                self.assertIn('CompositeScore', headers)
+                self.assertIn('Class', headers)
+                
+                # Verify data
+                row = next(reader)
+                self.assertEqual(row['ApplicationService'], 'Test App')
+                self.assertEqual(row['CompositeScore'], 'High')
+                self.assertEqual(row['Class'], 'Server')
+                
         finally:
             if os.path.exists(output_file.name):
                 os.unlink(output_file.name)
@@ -187,18 +270,26 @@ class TestDataProcessors(unittest.TestCase):
             InfrastructureRecord("App1", "A1", "High", "Server"),
             InfrastructureRecord("App2", "A2", "Low", "DB"),
         ]
-        
-        # Set risk percentages for sorting
+
+        # Set required fields for risk chart generation
+        records[0].composite_score_number = 3.0
+        records[0].composite_risk_score = 15.0
         records[0].composite_risk_score_percent = 75.0
+        records[1].composite_score_number = 1.0
+        records[1].composite_risk_score = 5.0
         records[1].composite_risk_score_percent = 25.0
         
         chart_entries = generator.generate_chart(records)
-        
+
         self.assertEqual(len(chart_entries), 2)
         self.assertEqual(chart_entries[0].rank, 1)
-        self.assertEqual(chart_entries[0].app_code, "A1")  # Higher percentage first
+        self.assertEqual(chart_entries[0].application_service, "App1")
+        self.assertEqual(chart_entries[0].app_code, "A1")  # Higher composite score first
+        self.assertEqual(chart_entries[0].composite_score_number, 3.0)
         self.assertEqual(chart_entries[1].rank, 2)
+        self.assertEqual(chart_entries[1].application_service, "App2")
         self.assertEqual(chart_entries[1].app_code, "A2")
+        self.assertEqual(chart_entries[1].composite_score_number, 1.0)
     
     def test_console_report_generator(self):
         """Test ConsoleReportGenerator implements ReportGenerator interface."""
@@ -324,14 +415,47 @@ class TestDataAnalysisService(unittest.TestCase):
             self.service.save_enhanced_data(records, output_file.name)
             self.assertTrue(os.path.exists(output_file.name))
             
-            # Verify enhanced data is saved
+            # Verify enhanced data is saved with AppCode
             with open(output_file.name, 'r') as f:
                 reader = csv.DictReader(f)
                 saved_records = list(reader)
                 
                 self.assertEqual(len(saved_records), 2)
+                self.assertIn('AppCode', reader.fieldnames)
                 self.assertIn('TotalInfrastructure', reader.fieldnames)
                 self.assertIn('CompositeRiskScore', reader.fieldnames)
+        finally:
+            if os.path.exists(output_file.name):
+                os.unlink(output_file.name)
+    
+    def test_save_enhanced_data_exclude_appcode(self):
+        """Test saving enhanced data without AppCode column."""
+        records, _ = self.service.analyze_data(self.temp_file.name)
+        
+        output_file = tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False)
+        output_file.close()
+        
+        try:
+            # Save with exclude_appcode=True
+            self.service.save_enhanced_data(records, output_file.name, exclude_appcode=True)
+            self.assertTrue(os.path.exists(output_file.name))
+            
+            # Verify AppCode column is excluded
+            with open(output_file.name, 'r') as f:
+                reader = csv.DictReader(f)
+                saved_records = list(reader)
+                
+                self.assertEqual(len(saved_records), 2)
+                self.assertNotIn('AppCode', reader.fieldnames)
+                self.assertIn('ApplicationService', reader.fieldnames)
+                self.assertIn('TotalInfrastructure', reader.fieldnames)
+                self.assertIn('CompositeRiskScore', reader.fieldnames)
+                
+                # Verify data integrity without AppCode
+                for record in saved_records:
+                    self.assertIn('ApplicationService', record)
+                    self.assertIn('CompositeScore', record)
+                    self.assertNotIn('AppCode', record)
         finally:
             if os.path.exists(output_file.name):
                 os.unlink(output_file.name)

@@ -80,8 +80,8 @@ def main():
     # Generate reports
     analysis_service.generate_full_report(enhanced_records, appcode_counts)
     
-    # Save enhanced data
-    analysis_service.save_enhanced_data(enhanced_records, 'analyzed_data.csv')
+    # Save enhanced data (excluding AppCode column)
+    analysis_service.save_enhanced_data(enhanced_records, 'analyzed_data.csv', exclude_appcode=True)
     
     # Display sample data
     display_sample_data(enhanced_records)

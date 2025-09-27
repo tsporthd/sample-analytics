@@ -17,7 +17,7 @@ from app_filter import AppCodeFilter
 
 class CSVDataReader(DataReader):
     """Concrete implementation for reading CSV data."""
-    
+    # May need to change reader here to Windows-1252
     def read_data(self, source: str) -> List[InfrastructureRecord]:
         """Read data from CSV file."""
         records = []
@@ -41,7 +41,8 @@ class CSVDataReader(DataReader):
 class CSVDataWriter(DataWriter):
     """Concrete implementation for writing CSV data."""
     
-    def write_data(self, records: List[InfrastructureRecord], destination: str) -> None:
+    def write_data(self, records: List[InfrastructureRecord], destination: str, 
+                   exclude_appcode: bool = False) -> None:
         """Write records to CSV file."""
         if not records:
             return
@@ -49,12 +50,12 @@ class CSVDataWriter(DataWriter):
         try:
             with open(destination, 'w', newline='', encoding='utf-8') as file:
                 # Get fieldnames from first record
-                fieldnames = list(records[0].to_dict().keys())
+                fieldnames = list(records[0].to_dict(exclude_appcode=exclude_appcode).keys())
                 writer = csv.DictWriter(file, fieldnames=fieldnames)
                 
                 writer.writeheader()
                 for record in records:
-                    writer.writerow(record.to_dict())
+                    writer.writerow(record.to_dict(exclude_appcode=exclude_appcode))
         except Exception as e:
             print(f"Error writing CSV file: {e}")
 
@@ -63,24 +64,26 @@ class RiskChartGenerator(ChartGenerator):
     """Concrete implementation for generating risk charts."""
     
     def generate_chart(self, records: List[InfrastructureRecord]) -> List[RiskChartEntry]:
-        """Generate risk chart entries sorted by risk percentage."""
-        # Sort records by risk percentage in descending order
+        """Generate risk chart entries grouped by CompositeScore and sorted accordingly."""
+        # Sort records by CompositeScore (descending) then by CompositeRiskScorePercent (descending)
         sorted_records = sorted(
-            records, 
-            key=lambda x: x.composite_risk_score_percent, 
+            records,
+            key=lambda x: (x.composite_score_number, x.composite_risk_score_percent),
             reverse=True
         )
-        
+
         chart_entries = []
         for i, record in enumerate(sorted_records, 1):
             entry = RiskChartEntry(
                 rank=i,
+                application_service=record.application_service,
                 app_code=record.app_code,
+                composite_score_number=record.composite_score_number,
                 composite_risk_score=record.composite_risk_score,
                 composite_risk_score_percent=record.composite_risk_score_percent
             )
             chart_entries.append(entry)
-        
+
         return chart_entries
 
 
@@ -145,19 +148,29 @@ class ConsoleChartDisplay:
     @staticmethod
     def display_chart(chart_entries: List[RiskChartEntry]) -> None:
         """Display risk chart in console."""
-        print("\n" + "=" * 80)
-        print("RISK CHART - SORTED BY COMPOSITE RISK SCORE PERCENT (HIGH TO LOW)")
-        print("=" * 80)
-        print(f"{'Rank':<4} | {'AppCode':<10} | {'CompositeRiskScore':<18} | {'Percent':<8}")
-        print("-" * 80)
-        
+        print("\n" + "=" * 140)
+        print("RISK CHART - GROUPED BY COMPOSITE SCORE (HIGH TO LOW), SORTED BY RISK SCORE PERCENT")
+        print("=" * 140)
+        print(f"{'Rank':<4} | {'ApplicationService':<30} | {'AppCode':<10} | {'Score#':<7} | {'CompositeRiskScore':<18} | {'Percent*':<8}")
+        print("-" * 140)
+
+        current_score = None
         for entry in chart_entries:
-            print(f"{entry.rank:<4} | {entry.app_code:<10} | "
+            # Add separator between score groups
+            if current_score is not None and current_score != entry.composite_score_number:
+                print("-" * 140)
+            current_score = entry.composite_score_number
+
+            # Truncate ApplicationService if too long
+            app_service = entry.application_service[:29] if len(entry.application_service) > 29 else entry.application_service
+            print(f"{entry.rank:<4} | {app_service:<30} | {entry.app_code:<10} | "
+                  f"{entry.composite_score_number:<7.1f} | "
                   f"{entry.composite_risk_score:<18.1f} | "
                   f"{entry.composite_risk_score_percent:<8.1f}%")
         
-        print("-" * 80)
+        print("-" * 140)
         print(f"Total records: {len(chart_entries)}")
+        print("* Percent = percentage within same CompositeScore group")
 
 
 class ChartCSVWriter:
@@ -255,9 +268,9 @@ class DataAnalysisService:
                 record.composite_score
             )
         
-        # Calculate risk scores and percentages
+        # Calculate risk scores and grouped percentages
         RiskCalculator.calculate_risk_scores(records)
-        RiskCalculator.calculate_risk_percentages(records)
+        RiskCalculator.calculate_risk_percentages_by_group(records)
     
     def generate_full_report(self, records: List[InfrastructureRecord], 
                            appcode_counts: Dict[str, int]) -> None:
@@ -274,7 +287,7 @@ class DataAnalysisService:
         ChartCSVWriter.write_chart(chart_entries, 'risk_chart.csv')
     
     def save_enhanced_data(self, records: List[InfrastructureRecord], 
-                          destination: str) -> None:
+                          destination: str, exclude_appcode: bool = False) -> None:
         """Save enhanced data using the configured writer."""
-        self.data_writer.write_data(records, destination)
+        self.data_writer.write_data(records, destination, exclude_appcode=exclude_appcode)
         print(f"Enhanced data saved to: {destination}")

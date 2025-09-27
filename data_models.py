@@ -26,9 +26,9 @@ class InfrastructureRecord:
     composite_risk_score: float = 0.0
     composite_risk_score_percent: float = 0.0
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self, exclude_appcode: bool = False) -> Dict[str, Any]:
         """Convert record to dictionary format."""
-        return {
+        data = {
             'ApplicationService': self.application_service,
             'AppCode': self.app_code,
             'CompositeScore': self.composite_score,
@@ -38,6 +38,11 @@ class InfrastructureRecord:
             'CompositeRiskScore': self.composite_risk_score,
             'CompositeRiskScorePercent': self.composite_risk_score_percent
         }
+        
+        if exclude_appcode:
+            data.pop('AppCode', None)
+        
+        return data
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'InfrastructureRecord':
@@ -54,15 +59,19 @@ class InfrastructureRecord:
 class RiskChartEntry:
     """Data model for risk chart entries."""
     rank: int
+    application_service: str
     app_code: str
+    composite_score_number: float
     composite_risk_score: float
     composite_risk_score_percent: float
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert entry to dictionary format."""
         return {
             'Rank': self.rank,
+            'ApplicationService': self.application_service,
             'AppCode': self.app_code,
+            'CompositeScoreNumber': self.composite_score_number,
             'CompositeRiskScore': self.composite_risk_score,
             'CompositeRiskScorePercent': self.composite_risk_score_percent
         }
@@ -111,7 +120,7 @@ class RiskCalculator:
     def calculate_risk_percentages(records: List[InfrastructureRecord]) -> None:
         """Calculate risk score percentages for all records."""
         total_risk = sum(record.composite_risk_score for record in records)
-        
+
         if total_risk > 0:
             for record in records:
                 record.composite_risk_score_percent = (
@@ -120,6 +129,30 @@ class RiskCalculator:
         else:
             for record in records:
                 record.composite_risk_score_percent = 0.0
+
+    @staticmethod
+    def calculate_risk_percentages_by_group(records: List[InfrastructureRecord]) -> None:
+        """Calculate risk score percentages grouped by CompositeScore."""
+        # Group records by composite_score
+        score_groups = {}
+        for record in records:
+            score = record.composite_score
+            if score not in score_groups:
+                score_groups[score] = []
+            score_groups[score].append(record)
+
+        # Calculate percentages within each group
+        for score, group_records in score_groups.items():
+            group_total_risk = sum(record.composite_risk_score for record in group_records)
+
+            if group_total_risk > 0:
+                for record in group_records:
+                    record.composite_risk_score_percent = (
+                        record.composite_risk_score / group_total_risk
+                    ) * 100
+            else:
+                for record in group_records:
+                    record.composite_risk_score_percent = 0.0
 
 
 # Interfaces (Abstract Base Classes)
@@ -137,7 +170,8 @@ class DataWriter(ABC):
     """Interface for writing data to various destinations."""
     
     @abstractmethod
-    def write_data(self, records: List[InfrastructureRecord], destination: str) -> None:
+    def write_data(self, records: List[InfrastructureRecord], destination: str, 
+                   exclude_appcode: bool = False) -> None:
         """Write records to destination."""
         pass
 
