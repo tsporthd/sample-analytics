@@ -62,6 +62,7 @@ class RiskChartEntry:
     application_service: str
     app_code: str
     composite_score_number: float
+    total_infrastructure: int
     composite_risk_score: float
     composite_risk_score_percent: float
 
@@ -72,6 +73,7 @@ class RiskChartEntry:
             'ApplicationService': self.application_service,
             'AppCode': self.app_code,
             'CompositeScoreNumber': self.composite_score_number,
+            'TotalInfrastructure': self.total_infrastructure,
             'CompositeRiskScore': self.composite_risk_score,
             'CompositeRiskScorePercent': self.composite_risk_score_percent
         }

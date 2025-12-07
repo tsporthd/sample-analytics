@@ -79,6 +79,7 @@ class RiskChartGenerator(ChartGenerator):
                 application_service=record.application_service,
                 app_code=record.app_code,
                 composite_score_number=record.composite_score_number,
+                total_infrastructure=record.total_infrastructure,
                 composite_risk_score=record.composite_risk_score,
                 composite_risk_score_percent=record.composite_risk_score_percent
             )
@@ -136,7 +137,7 @@ class ConsoleReportGenerator(ReportGenerator):
             "  - TotalInfrastructure: Count of items per AppCode",
             "  - CompositeScoreNumber: Numeric mapping of CompositeScore",
             "  - CompositeRiskScore: CompositeScoreNumber × TotalInfrastructure",
-            "  - CompositeRiskScorePercent: (CompositeRiskScore / Total) × 100"
+            "  - CompositeRiskScorePercent: (CompositeRiskScore / TotalRiskScore) × 100"
         ])
         
         return "\n".join(report_lines)
@@ -148,29 +149,30 @@ class ConsoleChartDisplay:
     @staticmethod
     def display_chart(chart_entries: List[RiskChartEntry]) -> None:
         """Display risk chart in console."""
-        print("\n" + "=" * 140)
+        print("\n" + "=" * 160)
         print("RISK CHART - GROUPED BY COMPOSITE SCORE (HIGH TO LOW), SORTED BY RISK SCORE PERCENT")
-        print("=" * 140)
-        print(f"{'Rank':<4} | {'ApplicationService':<30} | {'AppCode':<10} | {'Score#':<7} | {'CompositeRiskScore':<18} | {'Percent*':<8}")
-        print("-" * 140)
+        print("=" * 160)
+        print(f"{'Rank':<4} | {'ApplicationService':<30} | {'AppCode':<10} | {'Score#':<7} | {'TotalInfra':<10} | {'CompositeRiskScore':<18} | {'Percent*':<8}")
+        print("-" * 160)
 
         current_score = None
         for entry in chart_entries:
             # Add separator between score groups
             if current_score is not None and current_score != entry.composite_score_number:
-                print("-" * 140)
+                print("-" * 160)
             current_score = entry.composite_score_number
 
             # Truncate ApplicationService if too long
             app_service = entry.application_service[:29] if len(entry.application_service) > 29 else entry.application_service
             print(f"{entry.rank:<4} | {app_service:<30} | {entry.app_code:<10} | "
                   f"{entry.composite_score_number:<7.1f} | "
+                  f"{entry.total_infrastructure:<10} | "
                   f"{entry.composite_risk_score:<18.1f} | "
                   f"{entry.composite_risk_score_percent:<8.1f}%")
-        
-        print("-" * 140)
+
+        print("-" * 160)
         print(f"Total records: {len(chart_entries)}")
-        print("* Percent = percentage within same CompositeScore group")
+        print("* Percent = percentage of total CompositeRiskScore across all records")
 
 
 class ChartCSVWriter:
@@ -258,7 +260,7 @@ class DataAnalysisService:
         
         return unique_record_list, appcode_counts
     
-    def _enhance_records(self, records: List[InfrastructureRecord], 
+    def _enhance_records(self, records: List[InfrastructureRecord],
                         appcode_counts: Dict[str, int]) -> None:
         """Enhance records with calculated attributes."""
         # Add infrastructure counts and score numbers
@@ -267,10 +269,10 @@ class DataAnalysisService:
             record.composite_score_number = CompositeScoreMapper.map_to_number(
                 record.composite_score
             )
-        
-        # Calculate risk scores and grouped percentages
+
+        # Calculate risk scores and percentages
         RiskCalculator.calculate_risk_scores(records)
-        RiskCalculator.calculate_risk_percentages_by_group(records)
+        RiskCalculator.calculate_risk_percentages(records)
     
     def generate_full_report(self, records: List[InfrastructureRecord], 
                            appcode_counts: Dict[str, int]) -> None:
