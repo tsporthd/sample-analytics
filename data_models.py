@@ -21,16 +21,18 @@ class InfrastructureRecord:
     app_code: str
     composite_score: str
     class_type: str
+    executive: str = ''
     total_infrastructure: int = 0
     composite_score_number: float = 0.0
     composite_risk_score: float = 0.0
     composite_risk_score_percent: float = 0.0
-    
+
     def to_dict(self, exclude_appcode: bool = False) -> Dict[str, Any]:
         """Convert record to dictionary format."""
         data = {
             'ApplicationService': self.application_service,
             'AppCode': self.app_code,
+            'Executive': self.executive,
             'CompositeScore': self.composite_score,
             'Class': self.class_type,
             'TotalInfrastructure': self.total_infrastructure,
@@ -38,10 +40,10 @@ class InfrastructureRecord:
             'CompositeRiskScore': self.composite_risk_score,
             'CompositeRiskScorePercent': self.composite_risk_score_percent
         }
-        
+
         if exclude_appcode:
             data.pop('AppCode', None)
-        
+
         return data
     
     @classmethod

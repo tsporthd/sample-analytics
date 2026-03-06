@@ -227,13 +227,14 @@ class DataAnalysisService:
             if record.app_code not in unique_records:
                 unique_records[record.app_code] = record
         
-        # Apply AppCode filter if configured
+        # Apply AppCode filter and populate Executive if configured
         if self.app_filter:
             filtered_records = {}
             for app_code, record in unique_records.items():
                 if self.app_filter.is_allowed(app_code):
+                    record.executive = self.app_filter.get_executive(app_code)
                     filtered_records[app_code] = record
-            
+
             unique_records = filtered_records
             print(f"Filtered to {len(unique_records)} AppCodes based on Apps.csv")
         
