@@ -275,22 +275,46 @@ class DataAnalysisService:
         RiskCalculator.calculate_risk_scores(records)
         RiskCalculator.calculate_risk_percentages(records)
     
-    def generate_full_report(self, records: List[InfrastructureRecord], 
+    def generate_full_report(self, records: List[InfrastructureRecord],
                            appcode_counts: Dict[str, int]) -> None:
         """Generate complete analysis report."""
         # Generate summary report
         report = self.report_generator.generate_report(records, appcode_counts)
         print(report)
-        
+
         # Generate and display risk chart
         chart_entries = self.chart_generator.generate_chart(records)
         ConsoleChartDisplay.display_chart(chart_entries)
-        
+
         # Save chart to CSV
         ChartCSVWriter.write_chart(chart_entries, 'risk_chart.csv')
+
+        # Write AppCodes from Apps.csv that are not in the risk chart
+        self.write_apps_not_in_risk_chart(chart_entries, 'apps_not_in_risk_chart.csv')
     
-    def save_enhanced_data(self, records: List[InfrastructureRecord], 
+    def save_enhanced_data(self, records: List[InfrastructureRecord],
                           destination: str, exclude_appcode: bool = False) -> None:
         """Save enhanced data using the configured writer."""
         self.data_writer.write_data(records, destination, exclude_appcode=exclude_appcode)
         print(f"Enhanced data saved to: {destination}")
+
+    def write_apps_not_in_risk_chart(self, risk_chart_entries: List[RiskChartEntry],
+                                      destination: str) -> None:
+        """Write AppCodes from Apps.csv that are not in the risk chart to a CSV file."""
+        if not self.app_filter:
+            print("No app filter configured, skipping apps not in risk chart.")
+            return
+
+        risk_chart_appcodes = {entry.app_code for entry in risk_chart_entries}
+        all_appcodes = self.app_filter.get_allowed_appcodes()
+        missing_appcodes = sorted(all_appcodes - risk_chart_appcodes)
+
+        try:
+            with open(destination, 'w', newline='', encoding='utf-8') as file:
+                writer = csv.DictWriter(file, fieldnames=['AppCode'])
+                writer.writeheader()
+                for app_code in missing_appcodes:
+                    writer.writerow({'AppCode': app_code})
+            print(f"Found {len(missing_appcodes)} AppCodes not in risk chart, saved to: {destination}")
+        except Exception as e:
+            print(f"Error writing apps not in risk chart: {e}")
