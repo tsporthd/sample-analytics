@@ -50,8 +50,8 @@ class InfrastructureRecord:
     def from_dict(cls, data: Dict[str, Any]) -> 'InfrastructureRecord':
         """Create record from dictionary."""
         return cls(
-            application_service=data.get('ApplicationService', ''),
-            app_code=data.get('AppCode', ''),
+            application_service=data.get('ApplicationService', '').strip(),
+            app_code=data.get('AppCode', '').strip(),
             composite_score=data.get('CompositeScore', ''),
             class_type=data.get('Class', '')
         )
